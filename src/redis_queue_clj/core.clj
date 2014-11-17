@@ -5,13 +5,11 @@
 
 (set! *warn-on-reflection* true)
 
-(def *pop-timeout* 30)
+(def ^:dynamic *pop-timeout* 30)
 
-(def *task-timeout* 30)
+(def ^:dynamic *task-timeout* 30)
 
-(def *redis* nil)
-
-(def *sleeping-time* (* 1000 1)) ;; default to 1 sec
+(def ^:dynamic *redis* nil)
 
 (defmacro wcar*
   "Works exactly like wcar, but using a pre-configured connection."
@@ -29,15 +27,19 @@
 (defn- task-late?
   "Return current timestamp in seconds."
   [timestamp]
-  (-> (- (get-timestamp) timestamp)
+  {:pre [(or (number? timestamp) (string? timestamp))]}
+  (-> (- (get-timestamp) 
+         (if (string? timestamp)
+           (Integer/parseInt timestamp)
+           timestamp))
       (> *task-timeout*)))
 
-(defn- done-key [q-key] (car/key qkey :done))
+(defn- done-key [q-key] (car/key q-key :done))
 
 (defn- done?
   "Checks if the requisition's id is member of the done set."
   [q-key tid]
-  (wcar* (car/sismember (done-key q-key) tid)))
+  (pos? (wcar* (car/sismember (done-key q-key) tid))))
 
 (defn- remove-done!
   "Removes the requisition's id from the done set."
@@ -61,7 +63,7 @@
           ;; The task is already done. Its id is removed from the done set and the
           ;; popped task is just discarded.
           (and timestamp (done? q-key tid))
-          (do (remove-done! q-key tid) (recur rc q-key))
+          (do (remove-done! q-key tid) (safe-pop rc q-key))
           ;; The task was never processed or its processing is taking too much time.
           ;; The popped task is returned to be processed with a new timestamp.
           (or (nil? timestamp)
@@ -69,7 +71,9 @@
           (do (re-push! q-key tid) tid)
           ;; The popped is been processed and it's not late.
           :else 
-          (do (Thread/sleep *sleeping-time*) (re-push! q-key tid timestamp)))))))
+          (do (Thread/sleep (* 1000 *pop-timeout*)) 
+              (re-push! q-key tid timestamp)
+              nil))))))
 
 (defn mark-done!
   "Marks the task id as done. It should be used when a worker finishes its job."
