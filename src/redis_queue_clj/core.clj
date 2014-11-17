@@ -52,6 +52,7 @@
    (wcar* (car/lpush q-key (str tid "|" timestamp)))))
 
 (defn safe-pop
+  "Returns a task id from the given queue or blocks until one arrives."
   [rc q-key]
   (binding [*redis* rc]
     (when-let [popped-task (pop-queue q-key)]
@@ -71,13 +72,6 @@
           (do (Thread/sleep *sleeping-time*) (re-push! q-key tid timestamp)))))))
 
 (defn mark-done!
+  "Marks the task id as done. It should be used when a worker finishes its job."
   [rc q-key tid]
-  (binding [*redis* rc]
-    (wcar* (car/sadd (done-key q-key) tid))))
-
-(defn safe-answer!
-  [rc q-key answer-key tid data]
-  (binding [*redis* rc]
-    (wcar* 
-      (car/set answer-key data "ex" 100)
-      (car/sadd (done-key q-key) tid))))
+  (car/wcar rc (car/sadd (done-key q-key) tid)))
