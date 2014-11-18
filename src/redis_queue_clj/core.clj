@@ -16,64 +16,52 @@
   [& body]
   `(car/wcar *redis* ~@body))
 
-(defn- pop-queue
-  "Just pops (blocking until the timeout) from the tail of the waiting queue. Returns
-  the string of the requisition's id."
-  [q-key]
-  (second (wcar* (car/brpop q-key *pop-timeout*))))
-
 (defn- get-timestamp [] (long (/ (System/currentTimeMillis) 1000)))
-
-(defn- task-late?
-  "Return current timestamp in seconds."
-  [timestamp]
-  {:pre [(or (number? timestamp) (string? timestamp))]}
-  (-> (- (get-timestamp) 
-         (if (string? timestamp)
-           (Integer/parseInt timestamp)
-           timestamp))
-      (> *task-timeout*)))
 
 (defn- done-key [q-key] (car/key q-key :done))
 
-(defn- done?
-  "Checks if the requisition's id is member of the done set."
-  [q-key tid]
-  (pos? (wcar* (car/sismember (done-key q-key) tid))))
-
-(defn- remove-done!
-  "Removes the requisition's id from the done set."
+(defn- ^:dynamic *remove-done!*
+  "Removes the requisition's id from the done set. To understand why this function
+  has a dynamic scope, look at safe-pop and safe-pop*."
   [q-key tid]
   (wcar* (car/srem (done-key q-key) tid)))
-
-(defn- re-push!
-  "Pushes the requisition's id on the head of the waiting queue, but appending a unix
-  timestamp to its string."
-  ([q-key tid] (re-push! q-key tid (get-timestamp)))
-  ([q-key tid timestamp]
-   (wcar* (car/lpush q-key (str tid "|" timestamp)))))
 
 (defn safe-pop
   "Returns a task id from the given queue or blocks until one arrives."
   [rc q-key]
   (binding [*redis* rc]
-    (when-let [popped-task (pop-queue q-key)]
-      (let [[tid timestamp] (s/split popped-task #"[|]")]
-        (cond 
-          ;; The task is already done. Its id is removed from the done set and the
-          ;; popped task is just discarded.
-          (and timestamp (done? q-key tid))
-          (do (remove-done! q-key tid) (safe-pop rc q-key))
-          ;; The task was never processed or its processing is taking too much time.
-          ;; The popped task is returned to be processed with a new timestamp.
-          (or (nil? timestamp)
-              (and timestamp (task-late? timestamp)))
-          (do (re-push! q-key tid) tid)
-          ;; The popped is been processed and it's not late.
-          :else 
-          (do (Thread/sleep (* 1000 *pop-timeout*)) 
-              (re-push! q-key tid timestamp)
-              nil))))))
+    (letfn [(done? [tid] (pos? (wcar* (car/sismember (done-key q-key) tid))))
+            (task-late? [time-str]
+              (->> (Integer/parseInt time-str)
+                   (- (get-timestamp))
+                   (< *task-timeout*)))
+            (re-push! 
+              ([tid] (re-push! tid (get-timestamp)))
+              ([tid timestamp]
+               (wcar* (car/lpush q-key (str tid "|" timestamp)))))] 
+      (when-let [popped-task (second (wcar* (car/brpop q-key *pop-timeout*)))]
+        (let [[tid timestamp] (s/split popped-task #"[|]")]
+          (cond 
+            ;; The task is already done. Its id is removed from the done set and the
+            ;; popped task is just discarded.
+            (and timestamp (done? tid))
+            (do (*remove-done!* q-key tid) (safe-pop rc q-key))
+            ;; The task was never processed or its processing is taking too much time.
+            ;; The popped task is returned to be processed with a new timestamp.
+            (or (nil? timestamp)
+                (and timestamp (task-late? timestamp)))
+            (do (re-push! tid) tid)
+            ;; The popped is been processed and it's not late.
+            :else 
+            (do (Thread/sleep (* 1000 *pop-timeout*)) 
+                (re-push! tid timestamp)
+                nil)))))))
+
+(defn safe-pop*
+  "Acts exactly as safe-pop, but doesn't remove the task id from the done set."
+  [rc q-key]
+  (binding [*remove-done!* (fn [_ _] nil)]
+    (safe-pop rc q-key)))
 
 (defn mark-done!
   "Marks the task id as done. It should be used when a worker finishes its job."
