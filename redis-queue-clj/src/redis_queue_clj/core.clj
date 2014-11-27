@@ -48,13 +48,12 @@
             (do (*remove-done!* q-key tid) (safe-pop rc q-key))
             ;; The task was never processed or its processing is taking too much time.
             ;; The popped task is returned to be processed with a new timestamp.
-            (or (nil? timestamp)
-                (and timestamp (task-late? timestamp)))
+            (or (nil? timestamp) (task-late? timestamp))
             (do (re-push! tid) tid)
             ;; The popped is been processed and it's not late.
             :else 
-            (do (Thread/sleep (* 1000 *pop-timeout*)) 
-                (re-push! tid timestamp)
+            (do (re-push! tid timestamp)
+                (Thread/sleep (* 1000 *pop-timeout*)) 
                 nil)))))))
 
 (defn safe-pop*
