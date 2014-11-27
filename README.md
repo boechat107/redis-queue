@@ -5,6 +5,12 @@ original idea can be found [here](http://antirez.com/post/250).
 
 I'll put here a simplified description of the idea later.
 
+## Installation 
+
+```
+pip install redis-queue-pyclj
+```
+
 ## Usage
 
 For now, all implementations offer two useful functions, `safe_pop` and `mark_done`.
