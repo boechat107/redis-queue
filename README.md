@@ -7,8 +7,16 @@ I'll put here a simplified description of the idea later.
 
 ## Installation 
 
+Python:
+
 ```
 pip install redis-queue-pyclj
+```
+
+Clojure (Leiningen):
+
+```clojure
+[redis-queue-clj "0.1.0"]
 ```
 
 ## Usage
