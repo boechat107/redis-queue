@@ -1,14 +1,15 @@
 import time
+import uuid
+import logging as log
 
 class RedisQueue(object):
-    redis = None
-    poptimeout = None
-    tasktimeout = None
+    msg_data_temp = ":data:{ID}"
 
-    def __init__(self, redis, poptimeout=30, tasktimeout=30):
+    def __init__(self, redis, poptimeout=30, tasktimeout=30, exptime=60*60*24):
         self.redis = redis 
         self.poptimeout = poptimeout
         self.tasktimeout = tasktimeout
+        self.exptime = exptime
 
     def safe_pop(self, qkey):
         popped_task = self.redis.brpop(qkey, self.poptimeout)
@@ -39,7 +40,37 @@ class RedisQueue(object):
             ## The task is in progress but not late. 
             self.__repush(qkey, task_id, timestamp)
             time.sleep(self.poptimeout)
+            return None 
+
+    def push_msg(self, qkey, msg):
+        """Sets the message to a key, generates an unique ID, pushes the ID into
+        the queue and returns the ID to the caller of this function.
+        """
+        mid = uuid.uuid4()
+        self.redis.set(qkey + RedisQueue.msg_data_temp.format(ID=mid), 
+                       msg,
+                       ex=self.exptime)
+        self.redis.lpush(qkey, mid)
+        return mid
+
+    def safe_pop_msg(self, qkey):
+        """Returns a tuple (msg-id, msg-content), following the same ideas of 
+        safe_pop.
+        """
+        mid = self.safe_pop(qkey)
+        if not mid:
             return None
+        msg = self.__get_msg(qkey, mid)
+        if not msg:
+            log.warn("""Discarding message ID %s because it's too old or doesn't \
+                     have an associated data""")
+            self.mark_done(qkey, mid)
+            return None 
+        return (mid, msg)
+
+    def __get_msg(self, qkey, mid):
+        mkey = qkey + RedisQueue.msg_data_temp.format(ID=mid)
+        return self.redis.get(mkey)
 
     def __done_key(self, qkey):
         return "%s:done" % qkey
