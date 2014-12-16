@@ -91,4 +91,9 @@ class RedisQueue(object):
         self.redis.lpush(qkey, "%s|%s" % (tid, timestamp))
 
     def mark_done(self, qkey, tid):
+        """Adds the message ID to the set of messages done.
+        If some related key was created to handle this message, it will be
+        deleted. 
+        """
         self.redis.sadd(self.__done_key(qkey), tid)
+        self.redis.delete(qkey + RedisQueue.msg_data_temp.format(ID=tid))
