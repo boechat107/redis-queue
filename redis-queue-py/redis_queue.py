@@ -54,7 +54,9 @@ class RedisQueue(object):
         passed_time = long(time.time()) - timestamp
         return self.tasktimeout < passed_time
 
-    def __repush(self, qkey, tid, timestamp=long(time.time())):
+    def __repush(self, qkey, tid, timestamp=None):
+        if not timestamp:
+            timestamp = long(time.time())
         self.redis.lpush(qkey, "%s|%s" % (tid, timestamp))
 
     def mark_done(self, qkey, tid):
