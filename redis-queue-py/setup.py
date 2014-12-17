@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='redis-queue-pyclj',
-      version='0.2.0',
+      version='0.2.1',
       description='Some fault tolerance over Redis lists',
       url='https://github.com/boechat107/redis-queue',
       author='Andre A. Boechat',

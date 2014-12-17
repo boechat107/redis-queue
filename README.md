@@ -14,7 +14,7 @@ interface for some different languages.
 
 ## Installation 
 
-Python (the latest version for Python is ``0.2.0``):
+Python (the latest version for Python is ``0.2.1``):
 
 ```
 pip install redis-queue-pyclj
