@@ -59,13 +59,13 @@ class RedisQueue(object):
         """
         mid = self.safe_pop(qkey)
         if not mid:
-            return None
+            return (None, None)
         msg = self.__get_msg(qkey, mid)
         if not msg:
             log.warn("""Discarding message ID %s because it's too old or doesn't \
                      have an associated data""")
             self.mark_done(qkey, mid)
-            return None 
+            return (None, None) 
         return (mid, msg)
 
     def __get_msg(self, qkey, mid):
